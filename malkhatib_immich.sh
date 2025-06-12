@@ -74,7 +74,6 @@ EOF
 
 # ----------- 7. Create docker-compose.yml in current directory -----------
 cat > docker-compose.yml <<EOF
-version: '3.8'
 
 services:
   immich-server:
