@@ -1,62 +1,60 @@
-#!/bin/bash
-
-echo ""
-echo "Welcome to the Immich Easy Installer!"
-echo "Malkhatib Youtube Channel"
-echo "https://www.youtube.com/@malkhatib"
-echo ""
-
 #!/usr/bin/env bash
+# Immich Easy-Installer
 set -Eeuo pipefail
 
-# ---------- helper ----------
+# ───────────────────────── helpers ─────────────────────────
 need() { command -v "$1" &>/dev/null ||
-           { echo "!! $1 is required but missing"; exit 1; }; }
+           { echo "!! $1 is required but not installed"; exit 1; }; }
 for bin in docker realpath; do need "$bin"; done
-SUDO=''; ((EUID)) && SUDO='sudo'
+# Docker Compose (plugin or standalone)
+docker compose version &>/dev/null || { echo "!! docker compose not found"; exit 1; }
 
+SUDO=''; ((EUID)) && SUDO='sudo'   # become root only if necessary
+
+# ───────────────────────── banner ──────────────────────────
+echo -e "\nWelcome to the Immich Easy Installer!"
+echo   "Malkhatib YouTube Channel  —  https://www.youtube.com/@malkhatib"
 echo
 
-# ---------- 1. Upload location ----------
+# ─────────────────── 1) upload directory ───────────────────
 read -rp "Enter directory name or full path for uploads [uploads]: " UPLOAD_DIR
 UPLOAD_DIR="${UPLOAD_DIR:-uploads}"
 UPLOAD_DIR_ABS="$(realpath -m "$UPLOAD_DIR")"
 
-# ---------- 2. DB directory ----------
+# ─────────────────── 2) postgres directory ─────────────────
 DB_DIR="db"
 DB_DIR_ABS="$(realpath -m "$DB_DIR")"
 
 mkdir -p "$UPLOAD_DIR_ABS" "$DB_DIR_ABS"
 
-# ---------- 3. Fix DB permissions ----------
-echo "Fixing database directory permissions (needed for Postgres)…"
+echo "Fixing permissions on database directory (UID 999 = postgres)…"
 $SUDO chown -R 999:999 "$DB_DIR_ABS"
 $SUDO chmod 700 "$DB_DIR_ABS"
 
-# ---------- 4. User config ----------
-read -rp "Enter database username [postgres]: "   DB_USERNAME
+# ─────────────────── 3) user questions  ────────────────────
+read -rp "Database username   [postgres]: " DB_USERNAME
 DB_USERNAME="${DB_USERNAME:-postgres}"
 
-read -rp "Enter database name [immich]: "         DB_DATABASE_NAME
+read -rp "Database name       [immich]   : " DB_DATABASE_NAME
 DB_DATABASE_NAME="${DB_DATABASE_NAME:-immich}"
 
 while :; do
-  read -rsp "Enter the database password (no spaces): " DB_PASSWORD; echo
-  [[ "$DB_PASSWORD" =~ \  ]] || [[ -z "$DB_PASSWORD" ]] && \
-     { echo "Password may not contain spaces."; continue; }
+  read -rsp "Database password  (no spaces): " DB_PASSWORD; echo
+  [[ "$DB_PASSWORD" =~ \  ]] && { echo "Password may not contain spaces."; continue; }
+  [[ -n "$DB_PASSWORD"    ]] || { echo "Password may not be empty.";    continue; }
   break
 done
 
-read -rp "Enter the Immich version (e.g. v1.71.0) or leave blank for 'release': " IMMICH_VERSION
+read -rp "Immich version (e.g. v1.74.0) or blank for 'release': " IMMICH_VERSION
 IMMICH_VERSION="${IMMICH_VERSION:-release}"
 
-read -rp "Enter timezone (e.g. Etc/UTC, Europe/Berlin) [Etc/GMT+3]: " TZ
+read -rp "Timezone (e.g. Etc/UTC, Europe/Berlin) [Etc/GMT+3]: " TZ
 TZ="${TZ:-Etc/GMT+3}"
 
-read -rp "Enter the web server port to expose [2283]: " WEB_PORT
+read -rp "Host port to expose Immich on [2283]: " WEB_PORT
 WEB_PORT="${WEB_PORT:-2283}"
 
-# ---------- 5. Prepare ENV ----------
+# ─────────────────── 4) write .env file ────────────────────
 [[ "$UPLOAD_DIR" = /* ]] && ENV_UPLOAD="$UPLOAD_DIR_ABS" || ENV_UPLOAD="./$UPLOAD_DIR"
 
 cat > .env <<EOF
@@ -67,9 +65,10 @@ IMMICH_VERSION=$IMMICH_VERSION
 DB_PASSWORD=$DB_PASSWORD
 DB_USERNAME=$DB_USERNAME
 DB_DATABASE_NAME=$DB_DATABASE_NAME
+WEB_PORT=$WEB_PORT
 EOF
 
-# ---------- 6. docker-compose ----------
+# ───────────────── 5) docker-compose.yml ───────────────────
 cat > docker-compose.yml <<'EOF'
 services:
   immich-server:
@@ -128,17 +127,34 @@ networks:
   immich_network:
 EOF
 
-# ---------- 7. Final message ----------
-IP_ADDR=$(hostname -I | awk '{print $1}') || IP_ADDR=localhost
-echo -e "\nSetup complete!\n"
-echo "Start Immich with:"
-echo "  docker compose up -d"
+# ───────────────── 6) start the stack ──────────────────────
+echo -e "\nPulling images and starting Immich … (this can take a while)"
+docker compose pull
+docker compose up -d
+
+# Allow container list to populate
+sleep 2
+
+# ─────────────── 7) determine mapped port ─────────────────
+mapped=$(docker compose port immich-server 2283 2>/dev/null || true)
+if [[ -n "$mapped" ]]; then
+    HOST_PORT=${mapped##*:}   # strip ip:
+else
+    HOST_PORT=$WEB_PORT       # fixed mapping
+fi
+
+# ─────────────── 8) print final message ───────────────────
+IP_ADDR=$(hostname -I 2>/dev/null | awk '{print $1}')
+[[ -z "$IP_ADDR" ]] && IP_ADDR="localhost"
+
+echo -e "\n────────────────── Immich is starting ──────────────────"
+echo "Open the following URL in your browser once the health-checks are green:"
+echo "    http://${IP_ADDR}:${HOST_PORT}"
 echo
-echo "Open   http://${IP_ADDR:-localhost}:${WEB_PORT}   in your browser."
-echo
-echo "Uploads directory: $UPLOAD_DIR_ABS"
+echo "Uploads directory : $UPLOAD_DIR_ABS"
 echo "Database files    : $DB_DIR_ABS"
 echo
-echo "To remove everything (including volumes):"
-echo "  docker compose down -v"
-echo
+echo "Follow logs with  : docker compose logs -f immich-server"
+echo "Stop stack        : docker compose down"
+echo "Remove + volumes  : docker compose down -v"
+echo "──────────────────────────────────────────────────────────"
