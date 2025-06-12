@@ -6,26 +6,27 @@ echo "Malkhatib Youtube Channel"
 echo "https://www.youtube.com/@malkhatib"
 echo ""
 
-# ----------- 1. Ask user for locations (either relative or absolute) -----------
+# ----------- 1. Ask user for upload location (either relative or absolute) -----------
 read -p "Enter directory name or full path for uploads [uploads]: " UPLOAD_DIR
 UPLOAD_DIR="${UPLOAD_DIR:-uploads}"
 
-read -p "Enter directory name or full path for database [db]: " DB_DIR
-DB_DIR="${DB_DIR:-db}"
-
-# Absolute path for permission commands and user hints
-UPLOAD_DIR_ABS="$(realpath -m "$UPLOAD_DIR")"
+# ----------- 2. Set DB directory as default ./db in current directory -----------
+DB_DIR="db"
 DB_DIR_ABS="$(realpath -m "$DB_DIR")"
 
+# Absolute path for uploads, in case user entered relative
+UPLOAD_DIR_ABS="$(realpath -m "$UPLOAD_DIR")"
+
+# Create needed directories
 mkdir -p "$UPLOAD_DIR_ABS"
 mkdir -p "$DB_DIR_ABS"
 
-# ----------- 2. Set up permissions on the DB directory -----------
+# ----------- 3. Set up permissions on the DB directory -----------
 echo "Fixing database directory permissions (needed for Postgres)..."
 sudo chown -R 999:999 "$DB_DIR_ABS"
 sudo chmod -R 700 "$DB_DIR_ABS"
 
-# ----------- 3. Gather further configuration from user -----------
+# ----------- 4. Gather further configuration from user -----------
 read -p "Enter database username [postgres]: " DB_USERNAME
 DB_USERNAME="${DB_USERNAME:-postgres}"
 
@@ -44,26 +45,23 @@ done
 read -p "Enter the Immich version (e.g. v1.71.0) or leave blank for 'release': " IMMICH_VERSION
 IMMICH_VERSION="${IMMICH_VERSION:-release}"
 
-read -p "Enter timezone (e.g. Etc/UTC, Europe/Berlin) [Etc/UTC]: " TZ
-TZ="${TZ:-Etc/UTC}"
+read -p "Enter timezone (e.g. Etc/UTC, Europe/Berlin) [Etc/GMT+3]: " TZ
+TZ="${TZ:-Etc/GMT+3}"
 
 read -p "Enter the web server port to expose [2283]: " WEB_PORT
 WEB_PORT="${WEB_PORT:-2283}"
 
-# ----------- 4. Prepare ENV paths (absolute vs relative) -----------
+# ----------- 5. Prepare ENV paths (absolute vs relative for upload dir only) -----------
 if [[ "$UPLOAD_DIR" = /* ]]; then
   ENV_UPLOAD="$UPLOAD_DIR_ABS"
 else
   ENV_UPLOAD="./$UPLOAD_DIR"
 fi
 
-if [[ "$DB_DIR" = /* ]]; then
-  ENV_DB="$DB_DIR_ABS"
-else
-  ENV_DB="./$DB_DIR"
-fi
+# DB location is always relative ./db
+ENV_DB="./db"
 
-# ----------- 5. Create .env file in current (parent) directory -----------
+# ----------- 6. Create .env file in current directory -----------
 cat > .env <<EOF
 UPLOAD_LOCATION=$ENV_UPLOAD
 DB_DATA_LOCATION=$ENV_DB
@@ -74,7 +72,7 @@ DB_USERNAME=$DB_USERNAME
 DB_DATABASE_NAME=$DB_DATABASE_NAME
 EOF
 
-# ----------- 6. Create docker-compose.yml in current (parent) directory -----------
+# ----------- 7. Create docker-compose.yml in current directory -----------
 cat > docker-compose.yml <<EOF
 version: '3.8'
 
@@ -141,7 +139,7 @@ networks:
   immich_network:
 EOF
 
-# ----------- 7. Show user how to launch Immich and the access URL -----------
+# ----------- 8. Show user how to launch Immich and the access URL -----------
 echo ""
 echo "Setup complete!"
 
