@@ -15,8 +15,6 @@ need() { command -v "$1" &>/dev/null ||
 for bin in docker realpath; do need "$bin"; done
 SUDO=''; ((EUID)) && SUDO='sudo'
 
-echo -e "\nWelcome to the Immich Easy Installer!"
-echo   "Malkhatib Youtube Channel  –  https://www.youtube.com/@malkhatib"
 echo
 
 # ---------- 1. Upload location ----------
