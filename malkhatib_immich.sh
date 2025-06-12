@@ -1,25 +1,29 @@
 #!/bin/bash
 
 echo ""
-echo "Welcome to the Immich Easy Installer Done by Malkhatib!"
+echo "Welcome to the Immich Easy Installer!"
+echo "Malkhatib Youtube Channel"
+echo "https://www.youtube.com/@malkhatib"
 echo ""
-echo "Subscribe Share And like :)"
 
-# ----------- 1. Ask user for locations (paths are relative to current directory) -----------
-read -p "Enter directory name for uploads [uploads]: " UPLOAD_DIR
+# ----------- 1. Ask user for locations (either relative or absolute) -----------
+read -p "Enter directory name or full path for uploads [uploads]: " UPLOAD_DIR
 UPLOAD_DIR="${UPLOAD_DIR:-uploads}"
 
-read -p "Enter directory name for database [db]: " DB_DIR
+read -p "Enter directory name or full path for database [db]: " DB_DIR
 DB_DIR="${DB_DIR:-db}"
 
-# Ensure directories exist one level below where user is running the script
-mkdir -p "$UPLOAD_DIR"
-mkdir -p "$DB_DIR"
+# Absolute path for permission commands and user hints
+UPLOAD_DIR_ABS="$(realpath -m "$UPLOAD_DIR")"
+DB_DIR_ABS="$(realpath -m "$DB_DIR")"
+
+mkdir -p "$UPLOAD_DIR_ABS"
+mkdir -p "$DB_DIR_ABS"
 
 # ----------- 2. Set up permissions on the DB directory -----------
 echo "Fixing database directory permissions (needed for Postgres)..."
-sudo chown -R 999:999 "$DB_DIR"
-sudo chmod -R 700 "$DB_DIR"
+sudo chown -R 999:999 "$DB_DIR_ABS"
+sudo chmod -R 700 "$DB_DIR_ABS"
 
 # ----------- 3. Gather further configuration from user -----------
 read -p "Enter database username [postgres]: " DB_USERNAME
@@ -46,10 +50,23 @@ TZ="${TZ:-Etc/UTC}"
 read -p "Enter the web server port to expose [2283]: " WEB_PORT
 WEB_PORT="${WEB_PORT:-2283}"
 
-# ----------- 4. Create .env file in current (parent) directory -----------
+# ----------- 4. Prepare ENV paths (absolute vs relative) -----------
+if [[ "$UPLOAD_DIR" = /* ]]; then
+  ENV_UPLOAD="$UPLOAD_DIR_ABS"
+else
+  ENV_UPLOAD="./$UPLOAD_DIR"
+fi
+
+if [[ "$DB_DIR" = /* ]]; then
+  ENV_DB="$DB_DIR_ABS"
+else
+  ENV_DB="./$DB_DIR"
+fi
+
+# ----------- 5. Create .env file in current (parent) directory -----------
 cat > .env <<EOF
-UPLOAD_LOCATION=./$UPLOAD_DIR
-DB_DATA_LOCATION=./$DB_DIR
+UPLOAD_LOCATION=$ENV_UPLOAD
+DB_DATA_LOCATION=$ENV_DB
 TZ=$TZ
 IMMICH_VERSION=$IMMICH_VERSION
 DB_PASSWORD=$DB_PASSWORD
@@ -57,7 +74,7 @@ DB_USERNAME=$DB_USERNAME
 DB_DATABASE_NAME=$DB_DATABASE_NAME
 EOF
 
-# ----------- 5. Create docker-compose.yml in current (parent) directory -----------
+# ----------- 6. Create docker-compose.yml in current (parent) directory -----------
 cat > docker-compose.yml <<EOF
 version: '3.8'
 
@@ -124,11 +141,10 @@ networks:
   immich_network:
 EOF
 
-# ----------- 6. Show user how to launch Immich and the access URL -----------
+# ----------- 7. Show user how to launch Immich and the access URL -----------
 echo ""
 echo "Setup complete!"
 
-# Try to autodetect the main non-localhost IP, fallback to localhost
 IP_ADDR="$(hostname -I | awk '{print $1}')"
 if [[ -z "$IP_ADDR" ]]; then
     IP_ADDR="localhost"
@@ -141,9 +157,8 @@ echo ""
 echo "Once running, open this URL in your browser:"
 echo "  http://${IP_ADDR}:${WEB_PORT}"
 echo ""
-
-echo "Your uploads will be stored in:      $(realpath $UPLOAD_DIR)"
-echo "Your database files will be stored in: $(realpath $DB_DIR)"
+echo "Uploads directory:      $UPLOAD_DIR_ABS"
+echo "Database files:         $DB_DIR_ABS"
 echo ""
 echo "If you ever want to remove everything (including all your files and database), run:"
 echo "  docker compose down -v"
