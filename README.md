@@ -12,10 +12,8 @@
 ## طريقة الاستخدام
 
 ```bash
-chmod +x setup.sh
-./setup.sh
-
-docker compose up -d
+sudo chmod +x malkhatib_immich.sh
+sudo ./malkhatib_immich.sh
 
 ```
 
