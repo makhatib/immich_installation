@@ -2,26 +2,31 @@
 # Immich Easy-Installer
 set -Eeuo pipefail
 
-# ───────────────────────── helpers ─────────────────────────
+# ─────────────────── prerequisites ───────────────────
 need() { command -v "$1" &>/dev/null ||
            { echo "!! $1 is required but not installed"; exit 1; }; }
-for bin in docker realpath; do need "$bin"; done
-# Docker Compose (plugin or standalone)
+for bin in docker realpath ip; do need "$bin"; done
 docker compose version &>/dev/null || { echo "!! docker compose not found"; exit 1; }
 
-SUDO=''; ((EUID)) && SUDO='sudo'   # become root only if necessary
+SUDO=''; ((EUID)) && SUDO='sudo'      # elevate only when needed
 
-# ───────────────────────── banner ──────────────────────────
+# -------- helper: detect primary host IP (non-Docker) --------
+get_host_ip() {
+  ip -4 route get 1.1.1.1 2>/dev/null \
+    | awk '{for(i=1;i<=NF;i++) if($i=="src"){print $(i+1); exit}}'
+}
+
+# ───────────────────── banner ─────────────────────
 echo -e "\nWelcome to the Immich Easy Installer!"
 echo   "Malkhatib YouTube Channel  —  https://www.youtube.com/@malkhatib"
 echo
 
-# ─────────────────── 1) upload directory ───────────────────
+# ────────────── 1) upload directory ──────────────
 read -rp "Enter directory name or full path for uploads [uploads]: " UPLOAD_DIR
 UPLOAD_DIR="${UPLOAD_DIR:-uploads}"
 UPLOAD_DIR_ABS="$(realpath -m "$UPLOAD_DIR")"
 
-# ─────────────────── 2) postgres directory ─────────────────
+# ────────────── 2) postgres directory ─────────────
 DB_DIR="db"
 DB_DIR_ABS="$(realpath -m "$DB_DIR")"
 
@@ -31,7 +36,7 @@ echo "Fixing permissions on database directory (UID 999 = postgres)…"
 $SUDO chown -R 999:999 "$DB_DIR_ABS"
 $SUDO chmod 700 "$DB_DIR_ABS"
 
-# ─────────────────── 3) user questions  ────────────────────
+# ────────────── 3) user questions  ───────────────
 read -rp "Database username   [postgres]: " DB_USERNAME
 DB_USERNAME="${DB_USERNAME:-postgres}"
 
@@ -54,7 +59,7 @@ TZ="${TZ:-Etc/GMT+3}"
 read -rp "Host port to expose Immich on [2283]: " WEB_PORT
 WEB_PORT="${WEB_PORT:-2283}"
 
-# ─────────────────── 4) write .env file ────────────────────
+# ────────────── 4) write .env file ───────────────
 [[ "$UPLOAD_DIR" = /* ]] && ENV_UPLOAD="$UPLOAD_DIR_ABS" || ENV_UPLOAD="./$UPLOAD_DIR"
 
 cat > .env <<EOF
@@ -68,7 +73,7 @@ DB_DATABASE_NAME=$DB_DATABASE_NAME
 WEB_PORT=$WEB_PORT
 EOF
 
-# ───────────────── 5) docker-compose.yml ───────────────────
+# ───────────── 5) docker-compose.yml ─────────────
 cat > docker-compose.yml <<'EOF'
 services:
   immich-server:
@@ -127,24 +132,22 @@ networks:
   immich_network:
 EOF
 
-# ───────────────── 6) start the stack ──────────────────────
+# ───────────── 6) start the stack ───────────────
 echo -e "\nPulling images and starting Immich … (this can take a while)"
 docker compose pull
 docker compose up -d
+sleep 2   # let Docker register the containers
 
-# Allow container list to populate
-sleep 2
-
-# ─────────────── 7) determine mapped port ─────────────────
+# ───────────── 7) determine mapped port ─────────
 mapped=$(docker compose port immich-server 2283 2>/dev/null || true)
 if [[ -n "$mapped" ]]; then
-    HOST_PORT=${mapped##*:}   # strip ip:
+    HOST_PORT=${mapped##*:}
 else
-    HOST_PORT=$WEB_PORT       # fixed mapping
+    HOST_PORT=$WEB_PORT
 fi
 
-# ─────────────── 8) print final message ───────────────────
-IP_ADDR=$(hostname -I 2>/dev/null | awk '{print $1}')
+# ───────────── 8) final message ────────────────
+IP_ADDR=$(get_host_ip)
 [[ -z "$IP_ADDR" ]] && IP_ADDR="localhost"
 
 echo -e "\n────────────────── Immich is starting ──────────────────"
