@@ -17,7 +17,7 @@ chmod +x setup.sh
 
 docker compose up -d
 
-
+```
 
 ارجو الاشتراك وتفعيل جرس التنبيهات ليصلك كل جديد 
 https://www.youtube.com/@malkhatib
